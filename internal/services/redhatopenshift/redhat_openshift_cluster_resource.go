@@ -29,23 +29,35 @@ var _ sdk.ResourceWithUpdate = RedHatOpenShiftCluster{}
 type RedHatOpenShiftCluster struct{}
 
 type RedHatOpenShiftClusterModel struct {
-	Tags             map[string]string  `tfschema:"tags"`
-	Name             string             `tfschema:"name"`
-	Location         string             `tfschema:"location"`
-	ResourceGroup    string             `tfschema:"resource_group_name"`
-	ConsoleUrl       string             `tfschema:"console_url"`
-	ServicePrincipal []ServicePrincipal `tfschema:"service_principal"`
-	ClusterProfile   []ClusterProfile   `tfschema:"cluster_profile"`
-	NetworkProfile   []NetworkProfile   `tfschema:"network_profile"`
-	MainProfile      []MainProfile      `tfschema:"main_profile"`
-	WorkerProfile    []WorkerProfile    `tfschema:"worker_profile"`
-	ApiServerProfile []ApiServerProfile `tfschema:"api_server_profile"`
-	IngressProfile   []IngressProfile   `tfschema:"ingress_profile"`
+	Tags                            map[string]string                 `tfschema:"tags"`
+	Name                            string                            `tfschema:"name"`
+	Location                        string                            `tfschema:"location"`
+	ResourceGroup                   string                            `tfschema:"resource_group_name"`
+	ConsoleUrl                      string                            `tfschema:"console_url"`
+	ServicePrincipal                []ServicePrincipal                `tfschema:"service_principal"`
+	PlatformWorkloadIdentityProfile []PlatformWorkloadIdentityProfile `tfschema:"platform_workload_identity_profile"`
+	ClusterProfile                  []ClusterProfile                  `tfschema:"cluster_profile"`
+	NetworkProfile                  []NetworkProfile                  `tfschema:"network_profile"`
+	MainProfile                     []MainProfile                     `tfschema:"main_profile"`
+	WorkerProfile                   []WorkerProfile                   `tfschema:"worker_profile"`
+	ApiServerProfile                []ApiServerProfile                `tfschema:"api_server_profile"`
+	IngressProfile                  []IngressProfile                  `tfschema:"ingress_profile"`
 }
 
 type ServicePrincipal struct {
 	ClientId     string `tfschema:"client_id"`
 	ClientSecret string `tfschema:"client_secret"`
+}
+
+type PlatformWorkloadIdentityProfile struct {
+	PlatformWorkloadIdentities []PlatformWorkloadIdentity `tfschema:"platform_workload_identity"`
+}
+
+type PlatformWorkloadIdentity struct {
+	Name       string `tfschema:"name"`
+	ResourceId string `tfschema:"resource_id"`
+	ClientId   string `tfschema:"client_id"`
+	ObjectId   string `tfschema:"object_id"`
 }
 
 type ClusterProfile struct {
@@ -159,9 +171,10 @@ func (r RedHatOpenShiftCluster) Arguments() map[string]*pluginsdk.Schema {
 		},
 
 		"service_principal": {
-			Type:     pluginsdk.TypeList,
-			Required: true,
-			MaxItems: 1,
+			Type:         pluginsdk.TypeList,
+			Optional:     true,
+			MaxItems:     1,
+			ExactlyOneOf: []string{"service_principal", "platform_workload_identity_profile"},
 			Elem: &pluginsdk.Resource{
 				Schema: map[string]*pluginsdk.Schema{
 					"client_id": {
@@ -174,6 +187,44 @@ func (r RedHatOpenShiftCluster) Arguments() map[string]*pluginsdk.Schema {
 						Required:     true,
 						Sensitive:    true,
 						ValidateFunc: validation.StringIsNotEmpty,
+					},
+				},
+			},
+		},
+
+		"platform_workload_identity_profile": {
+			Type:         pluginsdk.TypeList,
+			Optional:     true,
+			MaxItems:     1,
+			ExactlyOneOf: []string{"service_principal", "platform_workload_identity_profile"},
+			Elem: &pluginsdk.Resource{
+				Schema: map[string]*pluginsdk.Schema{
+					"platform_workload_identity": {
+						Type:     pluginsdk.TypeList,
+						Required: true,
+						MinItems: 1,
+						Elem: &pluginsdk.Resource{
+							Schema: map[string]*pluginsdk.Schema{
+								"name": {
+									Type:         pluginsdk.TypeString,
+									Required:     true,
+									ValidateFunc: validation.StringIsNotEmpty,
+								},
+								"resource_id": {
+									Type:         pluginsdk.TypeString,
+									Required:     true,
+									ValidateFunc: azure.ValidateResourceID,
+								},
+								"client_id": {
+									Type:     pluginsdk.TypeString,
+									Computed: true,
+								},
+								"object_id": {
+									Type:     pluginsdk.TypeString,
+									Computed: true,
+								},
+							},
+						},
 					},
 				},
 			},
@@ -406,13 +457,14 @@ func (r RedHatOpenShiftCluster) Create() sdk.ResourceFunc {
 				Name:     pointer.To(id.OpenShiftClusterName),
 				Location: location.Normalize(config.Location),
 				Properties: &openshiftclusters.OpenShiftClusterProperties{
-					ClusterProfile:          expandOpenshiftClusterProfile(config.ClusterProfile, id.SubscriptionId),
-					ServicePrincipalProfile: expandOpenshiftServicePrincipalProfile(config.ServicePrincipal),
-					NetworkProfile:          expandOpenshiftNetworkProfile(config.NetworkProfile),
-					MasterProfile:           expandOpenshiftMainProfile(config.MainProfile),
-					WorkerProfiles:          expandOpenshiftWorkerProfiles(config.WorkerProfile),
-					ApiserverProfile:        expandOpenshiftApiServerProfile(config.ApiServerProfile),
-					IngressProfiles:         expandOpenshiftIngressProfiles(config.IngressProfile),
+					ClusterProfile:                  expandOpenshiftClusterProfile(config.ClusterProfile, id.SubscriptionId),
+					ServicePrincipalProfile:         expandOpenshiftServicePrincipalProfile(config.ServicePrincipal),
+					PlatformWorkloadIdentityProfile: expandOpenshiftPlatformWorkloadIdentityProfile(config.PlatformWorkloadIdentityProfile),
+					NetworkProfile:                  expandOpenshiftNetworkProfile(config.NetworkProfile),
+					MasterProfile:                   expandOpenshiftMainProfile(config.MainProfile),
+					WorkerProfiles:                  expandOpenshiftWorkerProfiles(config.WorkerProfile),
+					ApiserverProfile:                expandOpenshiftApiServerProfile(config.ApiServerProfile),
+					IngressProfiles:                 expandOpenshiftIngressProfiles(config.IngressProfile),
 				},
 				Tags: pointer.To(config.Tags),
 			}
@@ -454,6 +506,13 @@ func (r RedHatOpenShiftCluster) Update() sdk.ResourceFunc {
 				parameter.Properties = &openshiftclusters.OpenShiftClusterProperties{
 					ServicePrincipalProfile: expandOpenshiftServicePrincipalProfile(state.ServicePrincipal),
 				}
+			}
+
+			if metadata.ResourceData.HasChange("platform_workload_identity_profile") {
+				if parameter.Properties == nil {
+					parameter.Properties = &openshiftclusters.OpenShiftClusterProperties{}
+				}
+				parameter.Properties.PlatformWorkloadIdentityProfile = expandOpenshiftPlatformWorkloadIdentityProfile(state.PlatformWorkloadIdentityProfile)
 			}
 
 			if err := client.UpdateThenPoll(ctx, *id, parameter); err != nil {
@@ -507,6 +566,7 @@ func (r RedHatOpenShiftCluster) Read() sdk.ResourceFunc {
 					state.ClusterProfile = *clusterProfile
 
 					state.ServicePrincipal = flattenOpenShiftServicePrincipalProfile(props.ServicePrincipalProfile, config)
+					state.PlatformWorkloadIdentityProfile = flattenOpenShiftPlatformWorkloadIdentityProfile(props.PlatformWorkloadIdentityProfile)
 					state.NetworkProfile = flattenOpenShiftNetworkProfile(props.NetworkProfile)
 					state.MainProfile = flattenOpenShiftMainProfile(props.MasterProfile)
 					state.ApiServerProfile = flattenOpenShiftAPIServerProfile(props.ApiserverProfile)
@@ -841,4 +901,45 @@ func flattenOpenShiftIngressProfiles(profiles *[]openshiftclusters.IngressProfil
 	}
 
 	return results
+}
+
+func expandOpenshiftPlatformWorkloadIdentityProfile(input []PlatformWorkloadIdentityProfile) *openshiftclusters.PlatformWorkloadIdentityProfile {
+	if len(input) == 0 {
+		return nil
+	}
+
+	identities := make(map[string]openshiftclusters.PlatformWorkloadIdentity)
+	for _, identity := range input[0].PlatformWorkloadIdentities {
+		identities[identity.Name] = openshiftclusters.PlatformWorkloadIdentity{
+			ResourceId: pointer.To(identity.ResourceId),
+		}
+	}
+
+	return &openshiftclusters.PlatformWorkloadIdentityProfile{
+		PlatformWorkloadIdentities: &identities,
+	}
+}
+
+func flattenOpenShiftPlatformWorkloadIdentityProfile(profile *openshiftclusters.PlatformWorkloadIdentityProfile) []PlatformWorkloadIdentityProfile {
+	if profile == nil {
+		return []PlatformWorkloadIdentityProfile{}
+	}
+
+	identities := make([]PlatformWorkloadIdentity, 0)
+	if profile.PlatformWorkloadIdentities != nil {
+		for name, identity := range *profile.PlatformWorkloadIdentities {
+			identities = append(identities, PlatformWorkloadIdentity{
+				Name:       name,
+				ResourceId: pointer.From(identity.ResourceId),
+				ClientId:   pointer.From(identity.ClientId),
+				ObjectId:   pointer.From(identity.ObjectId),
+			})
+		}
+	}
+
+	return []PlatformWorkloadIdentityProfile{
+		{
+			PlatformWorkloadIdentities: identities,
+		},
+	}
 }

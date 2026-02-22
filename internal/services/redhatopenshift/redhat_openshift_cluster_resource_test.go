@@ -189,6 +189,22 @@ func TestAccOpenShiftCluster_basicResourceGroupName(t *testing.T) {
 	})
 }
 
+func TestAccOpenShiftCluster_platformWorkloadIdentityProfile(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_redhat_openshift_cluster", "test")
+	r := OpenShiftClusterResource{}
+
+	data.ResourceTest(t, r, []acceptance.TestStep{
+		{
+			Config: r.platformWorkloadIdentityProfile(data),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("platform_workload_identity_profile.#").HasValue("1"),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
 func (t OpenShiftClusterResource) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
 	id, err := openshiftclusters.ParseProviderOpenShiftClusterID(state.ID)
 	if err != nil {
@@ -977,4 +993,134 @@ resource "azurerm_subnet" "worker_subnet" {
   service_endpoints    = ["Microsoft.Storage", "Microsoft.ContainerRegistry"]
 }
  `, data.RandomInteger, data.Locations.Primary)
+}
+
+func (r OpenShiftClusterResource) platformWorkloadIdentityProfile(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+%[1]s
+
+resource "azurerm_user_assigned_identity" "cloud_controller_manager" {
+  name                = "acctestaro-ccm-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "ingress" {
+  name                = "acctestaro-ingress-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "machine_api" {
+  name                = "acctestaro-machine-api-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "disk_csi_driver" {
+  name                = "acctestaro-disk-csi-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "cloud_network_config" {
+  name                = "acctestaro-cloud-net-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "image_registry" {
+  name                = "acctestaro-image-reg-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "file_csi_driver" {
+  name                = "acctestaro-file-csi-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_user_assigned_identity" "aro_operator" {
+  name                = "acctestaro-operator-%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+}
+
+resource "azurerm_redhat_openshift_cluster" "test" {
+  name                = "acctestaro%[2]d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+
+  cluster_profile {
+    domain  = "aro-%[3]s.com"
+    version = "4.19.20"
+  }
+
+  network_profile {
+    pod_cidr     = "10.128.0.0/14"
+    service_cidr = "172.30.0.0/16"
+  }
+
+  main_profile {
+    vm_size   = "Standard_D8s_v3"
+    subnet_id = azurerm_subnet.main_subnet.id
+  }
+
+  api_server_profile {
+    visibility = "Public"
+  }
+
+  ingress_profile {
+    visibility = "Public"
+  }
+
+  worker_profile {
+    vm_size      = "Standard_D4s_v3"
+    disk_size_gb = 128
+    node_count   = 3
+    subnet_id    = azurerm_subnet.worker_subnet.id
+  }
+
+  platform_workload_identity_profile {
+    platform_workload_identity {
+      name        = "cloud-controller-manager"
+      resource_id = azurerm_user_assigned_identity.cloud_controller_manager.id
+    }
+    platform_workload_identity {
+      name        = "ingress"
+      resource_id = azurerm_user_assigned_identity.ingress.id
+    }
+    platform_workload_identity {
+      name        = "machine-api"
+      resource_id = azurerm_user_assigned_identity.machine_api.id
+    }
+    platform_workload_identity {
+      name        = "disk-csi-driver"
+      resource_id = azurerm_user_assigned_identity.disk_csi_driver.id
+    }
+    platform_workload_identity {
+      name        = "cloud-network-config"
+      resource_id = azurerm_user_assigned_identity.cloud_network_config.id
+    }
+    platform_workload_identity {
+      name        = "image-registry"
+      resource_id = azurerm_user_assigned_identity.image_registry.id
+    }
+    platform_workload_identity {
+      name        = "file-csi-driver"
+      resource_id = azurerm_user_assigned_identity.file_csi_driver.id
+    }
+    platform_workload_identity {
+      name        = "aro-operator"
+      resource_id = azurerm_user_assigned_identity.aro_operator.id
+    }
+  }
+
+  depends_on = [
+    "azurerm_role_assignment.role_network1",
+    "azurerm_role_assignment.role_network2",
+  ]
+}
+  `, r.template(data), data.RandomInteger, data.RandomString)
 }
