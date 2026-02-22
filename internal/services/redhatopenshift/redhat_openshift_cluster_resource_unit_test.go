@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/hashicorp/go-azure-helpers/lang/pointer"
-	"github.com/hashicorp/go-azure-sdk/resource-manager/redhatopenshift/2023-09-04/openshiftclusters"
+	"github.com/hashicorp/terraform-provider-azurerm/internal/services/redhatopenshift/azuresdkhacks"
 )
 
 func TestExpandOpenshiftPlatformWorkloadIdentityProfile(t *testing.T) {
 	cases := []struct {
 		name     string
 		input    []PlatformWorkloadIdentityProfile
-		expected *openshiftclusters.PlatformWorkloadIdentityProfile
+		expected *azuresdkhacks.PlatformWorkloadIdentityProfile
 	}{
 		{
 			name:     "empty input returns nil",
@@ -33,8 +33,8 @@ func TestExpandOpenshiftPlatformWorkloadIdentityProfile(t *testing.T) {
 					},
 				},
 			},
-			expected: &openshiftclusters.PlatformWorkloadIdentityProfile{
-				PlatformWorkloadIdentities: &map[string]openshiftclusters.PlatformWorkloadIdentity{
+			expected: &azuresdkhacks.PlatformWorkloadIdentityProfile{
+				PlatformWorkloadIdentities: &map[string]azuresdkhacks.PlatformWorkloadIdentity{
 					"cloud-controller-manager": {
 						ResourceId: pointer.To("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/myIdentity"),
 					},
@@ -57,8 +57,8 @@ func TestExpandOpenshiftPlatformWorkloadIdentityProfile(t *testing.T) {
 					},
 				},
 			},
-			expected: &openshiftclusters.PlatformWorkloadIdentityProfile{
-				PlatformWorkloadIdentities: &map[string]openshiftclusters.PlatformWorkloadIdentity{
+			expected: &azuresdkhacks.PlatformWorkloadIdentityProfile{
+				PlatformWorkloadIdentities: &map[string]azuresdkhacks.PlatformWorkloadIdentity{
 					"cloud-controller-manager": {
 						ResourceId: pointer.To("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/ccm"),
 					},
@@ -107,7 +107,7 @@ func TestExpandOpenshiftPlatformWorkloadIdentityProfile(t *testing.T) {
 func TestFlattenOpenShiftPlatformWorkloadIdentityProfile(t *testing.T) {
 	cases := []struct {
 		name     string
-		input    *openshiftclusters.PlatformWorkloadIdentityProfile
+		input    *azuresdkhacks.PlatformWorkloadIdentityProfile
 		expected []PlatformWorkloadIdentityProfile
 	}{
 		{
@@ -117,8 +117,8 @@ func TestFlattenOpenShiftPlatformWorkloadIdentityProfile(t *testing.T) {
 		},
 		{
 			name: "single identity",
-			input: &openshiftclusters.PlatformWorkloadIdentityProfile{
-				PlatformWorkloadIdentities: &map[string]openshiftclusters.PlatformWorkloadIdentity{
+			input: &azuresdkhacks.PlatformWorkloadIdentityProfile{
+				PlatformWorkloadIdentities: &map[string]azuresdkhacks.PlatformWorkloadIdentity{
 					"cloud-controller-manager": {
 						ResourceId: pointer.To("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/ccm"),
 					},

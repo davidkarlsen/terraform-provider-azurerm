@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-provider-azurerm/helpers/azure"
 	commonValidate "github.com/hashicorp/terraform-provider-azurerm/helpers/validate"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/sdk"
+	"github.com/hashicorp/terraform-provider-azurerm/internal/services/redhatopenshift/azuresdkhacks"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/services/redhatopenshift/validate"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/tf/pluginsdk"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/tf/suppress"
@@ -422,7 +423,8 @@ func (r RedHatOpenShiftCluster) Create() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 90 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			sdkClient := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			client := azuresdkhacks.NewOpenShiftClustersWorkaroundClient(sdkClient)
 			subscriptionId := metadata.Client.Account.SubscriptionId
 
 			var config RedHatOpenShiftClusterModel
@@ -432,7 +434,7 @@ func (r RedHatOpenShiftCluster) Create() sdk.ResourceFunc {
 
 			id := openshiftclusters.NewProviderOpenShiftClusterID(subscriptionId, config.ResourceGroup, config.Name)
 
-			existing, err := client.Get(ctx, id)
+			existing, err := sdkClient.Get(ctx, id)
 			if err != nil {
 				if !response.WasNotFound(existing.HttpResponse) {
 					return fmt.Errorf("checking for presence of existing %s: %s", id, err)
@@ -443,10 +445,10 @@ func (r RedHatOpenShiftCluster) Create() sdk.ResourceFunc {
 				return metadata.ResourceRequiresImport(r.ResourceType(), id)
 			}
 
-			parameters := openshiftclusters.OpenShiftCluster{
+			parameters := azuresdkhacks.OpenShiftCluster{
 				Name:     pointer.To(id.OpenShiftClusterName),
 				Location: location.Normalize(config.Location),
-				Properties: &openshiftclusters.OpenShiftClusterProperties{
+				Properties: &azuresdkhacks.OpenShiftClusterProperties{
 					ClusterProfile:                  expandOpenshiftClusterProfile(config.ClusterProfile, id.SubscriptionId),
 					ServicePrincipalProfile:         expandOpenshiftServicePrincipalProfile(config.ServicePrincipal),
 					PlatformWorkloadIdentityProfile: expandOpenshiftPlatformWorkloadIdentityProfile(config.PlatformWorkloadIdentityProfile),
@@ -474,7 +476,8 @@ func (r RedHatOpenShiftCluster) Update() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 90 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			sdkClient := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			client := azuresdkhacks.NewOpenShiftClustersWorkaroundClient(sdkClient)
 
 			id, err := openshiftclusters.ParseProviderOpenShiftClusterID(metadata.ResourceData.Id())
 			if err != nil {
@@ -486,23 +489,17 @@ func (r RedHatOpenShiftCluster) Update() sdk.ResourceFunc {
 				return fmt.Errorf("decoding: %+v", err)
 			}
 
-			parameter := openshiftclusters.OpenShiftClusterUpdate{}
+			parameter := azuresdkhacks.OpenShiftClusterUpdate{}
 
 			if metadata.ResourceData.HasChange("tags") {
 				parameter.Tags = pointer.To(state.Tags)
 			}
 
-			if metadata.ResourceData.HasChange("service_principal") {
-				parameter.Properties = &openshiftclusters.OpenShiftClusterProperties{
-					ServicePrincipalProfile: expandOpenshiftServicePrincipalProfile(state.ServicePrincipal),
+			if metadata.ResourceData.HasChange("service_principal") || metadata.ResourceData.HasChange("platform_workload_identity_profile") {
+				parameter.Properties = &azuresdkhacks.OpenShiftClusterUpdateProperties{
+					ServicePrincipalProfile:         expandOpenshiftServicePrincipalProfile(state.ServicePrincipal),
+					PlatformWorkloadIdentityProfile: expandOpenshiftPlatformWorkloadIdentityProfile(state.PlatformWorkloadIdentityProfile),
 				}
-			}
-
-			if metadata.ResourceData.HasChange("platform_workload_identity_profile") {
-				if parameter.Properties == nil {
-					parameter.Properties = &openshiftclusters.OpenShiftClusterProperties{}
-				}
-				parameter.Properties.PlatformWorkloadIdentityProfile = expandOpenshiftPlatformWorkloadIdentityProfile(state.PlatformWorkloadIdentityProfile)
 			}
 
 			if err := client.UpdateThenPoll(ctx, *id, parameter); err != nil {
@@ -518,7 +515,8 @@ func (r RedHatOpenShiftCluster) Read() sdk.ResourceFunc {
 	return sdk.ResourceFunc{
 		Timeout: 5 * time.Minute,
 		Func: func(ctx context.Context, metadata sdk.ResourceMetaData) error {
-			client := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			sdkClient := metadata.Client.RedHatOpenShift.OpenShiftClustersClient
+			client := azuresdkhacks.NewOpenShiftClustersWorkaroundClient(sdkClient)
 
 			id, err := openshiftclusters.ParseProviderOpenShiftClusterID(metadata.ResourceData.Id())
 			if err != nil {
@@ -893,24 +891,24 @@ func flattenOpenShiftIngressProfiles(profiles *[]openshiftclusters.IngressProfil
 	return results
 }
 
-func expandOpenshiftPlatformWorkloadIdentityProfile(input []PlatformWorkloadIdentityProfile) *openshiftclusters.PlatformWorkloadIdentityProfile {
+func expandOpenshiftPlatformWorkloadIdentityProfile(input []PlatformWorkloadIdentityProfile) *azuresdkhacks.PlatformWorkloadIdentityProfile {
 	if len(input) == 0 {
 		return nil
 	}
 
-	identities := make(map[string]openshiftclusters.PlatformWorkloadIdentity)
+	identities := make(map[string]azuresdkhacks.PlatformWorkloadIdentity)
 	for _, identity := range input[0].PlatformWorkloadIdentities {
-		identities[identity.Name] = openshiftclusters.PlatformWorkloadIdentity{
+		identities[identity.Name] = azuresdkhacks.PlatformWorkloadIdentity{
 			ResourceId: pointer.To(identity.ResourceId),
 		}
 	}
 
-	return &openshiftclusters.PlatformWorkloadIdentityProfile{
+	return &azuresdkhacks.PlatformWorkloadIdentityProfile{
 		PlatformWorkloadIdentities: &identities,
 	}
 }
 
-func flattenOpenShiftPlatformWorkloadIdentityProfile(profile *openshiftclusters.PlatformWorkloadIdentityProfile) []PlatformWorkloadIdentityProfile {
+func flattenOpenShiftPlatformWorkloadIdentityProfile(profile *azuresdkhacks.PlatformWorkloadIdentityProfile) []PlatformWorkloadIdentityProfile {
 	if profile == nil {
 		return []PlatformWorkloadIdentityProfile{}
 	}
