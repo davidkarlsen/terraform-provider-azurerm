@@ -121,8 +121,6 @@ func TestFlattenOpenShiftPlatformWorkloadIdentityProfile(t *testing.T) {
 				PlatformWorkloadIdentities: &map[string]openshiftclusters.PlatformWorkloadIdentity{
 					"cloud-controller-manager": {
 						ResourceId: pointer.To("/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/ccm"),
-						ClientId:   pointer.To("client-id-1"),
-						ObjectId:   pointer.To("object-id-1"),
 					},
 				},
 			},
@@ -132,8 +130,6 @@ func TestFlattenOpenShiftPlatformWorkloadIdentityProfile(t *testing.T) {
 						{
 							Name:       "cloud-controller-manager",
 							ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRG/providers/Microsoft.ManagedIdentity/userAssignedIdentities/ccm",
-							ClientId:   "client-id-1",
-							ObjectId:   "object-id-1",
 						},
 					},
 				},
@@ -168,14 +164,6 @@ func TestFlattenOpenShiftPlatformWorkloadIdentityProfile(t *testing.T) {
 				if actualIdentity.ResourceId != expectedIdentity.ResourceId {
 					t.Fatalf("expected ResourceId %q for identity %q, got %q",
 						expectedIdentity.ResourceId, expectedIdentity.Name, actualIdentity.ResourceId)
-				}
-				if actualIdentity.ClientId != expectedIdentity.ClientId {
-					t.Fatalf("expected ClientId %q for identity %q, got %q",
-						expectedIdentity.ClientId, expectedIdentity.Name, actualIdentity.ClientId)
-				}
-				if actualIdentity.ObjectId != expectedIdentity.ObjectId {
-					t.Fatalf("expected ObjectId %q for identity %q, got %q",
-						expectedIdentity.ObjectId, expectedIdentity.Name, actualIdentity.ObjectId)
 				}
 			}
 		})

@@ -56,8 +56,6 @@ type PlatformWorkloadIdentityProfile struct {
 type PlatformWorkloadIdentity struct {
 	Name       string `tfschema:"name"`
 	ResourceId string `tfschema:"resource_id"`
-	ClientId   string `tfschema:"client_id"`
-	ObjectId   string `tfschema:"object_id"`
 }
 
 type ClusterProfile struct {
@@ -214,14 +212,6 @@ func (r RedHatOpenShiftCluster) Arguments() map[string]*pluginsdk.Schema {
 									Type:         pluginsdk.TypeString,
 									Required:     true,
 									ValidateFunc: azure.ValidateResourceID,
-								},
-								"client_id": {
-									Type:     pluginsdk.TypeString,
-									Computed: true,
-								},
-								"object_id": {
-									Type:     pluginsdk.TypeString,
-									Computed: true,
 								},
 							},
 						},
@@ -931,8 +921,6 @@ func flattenOpenShiftPlatformWorkloadIdentityProfile(profile *openshiftclusters.
 			identities = append(identities, PlatformWorkloadIdentity{
 				Name:       name,
 				ResourceId: pointer.From(identity.ResourceId),
-				ClientId:   pointer.From(identity.ClientId),
-				ObjectId:   pointer.From(identity.ObjectId),
 			})
 		}
 	}
